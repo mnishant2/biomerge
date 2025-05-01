@@ -9,6 +9,12 @@ import torch
 from pathlib import Path
 import importlib
 
+# --- Performance Settings --- 
+# Enable TF32 for matrix multiplications (speeds up A100/H100)
+torch.set_float32_matmul_precision('high') # or 'medium' based on experimentation
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True # Enable TF32 for cuDNN convs too
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,7 +54,10 @@ def train(cfg: DictConfig):
     logger.info("Initializing model")
     model_fn_mod, model_fn_name = cfg.model._target_.rsplit(".", 1)
     build_model = getattr(importlib.import_module(model_fn_mod), model_fn_name)
-    model = build_model(**cfg.model.params)
+    # Pass relevant training args to model build fn if needed (like use_gradient_checkpointing)
+    model_params = OmegaConf.to_container(cfg.model.params, resolve=True)
+    model_params["use_gradient_checkpointing"] = cfg.training.get("gradient_checkpointing", False)
+    model = build_model(**model_params)
     
     # --- Debug: Verify trainable parameters ---
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -56,33 +65,50 @@ def train(cfg: DictConfig):
     logger.info(f"Explicit check: Trainable parameters: {trainable_params} ({trainable_params/total_params*100:.4f}% of total)")
     if trainable_params == 0:
         logger.error("CRITICAL: No trainable parameters found in the model! Check LoRA setup.")
-        # Potentially raise an error here if needed
     # --- End Debug ---
     
     # 3. Set up training arguments
     from transformers import Trainer, TrainingArguments
-    # Need to set predict_with_generate=True for callbacks that need generations (EL, Joint)
     training_args_dict = OmegaConf.to_container(cfg.training, resolve=True)
-    if cfg.task in ["el", "joint"]: 
+    
+    # Handle predict_with_generate based on task
+    if cfg.task in ["el", "joint", "jointdecode"]:
         training_args_dict["predict_with_generate"] = True
-        # Optionally add generation config overrides if needed
-        # training_args_dict["generation_max_length"] = ...
-        # training_args_dict["generation_num_beams"] = ...
-        
+    else:
+        training_args_dict["predict_with_generate"] = False # Ensure it's false for NER
+
+    # Handle gradient checkpointing kwargs
+    if training_args_dict.get("gradient_checkpointing", False):
+        logger.info("Gradient checkpointing enabled, setting use_reentrant=False.")
+        training_args_dict["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
+    else:
+        # Ensure the kwarg dict doesn't exist if checkpointing is false
+        if "gradient_checkpointing_kwargs" in training_args_dict:
+            del training_args_dict["gradient_checkpointing_kwargs"]
+
+    # Pop arguments not directly accepted by TrainingArguments or handled differently
+    model_specific_keys_in_training_cfg = ["quantization"] # Example if it was misplaced
+    for key in model_specific_keys_in_training_cfg:
+         training_args_dict.pop(key, None)
+
     training_args = TrainingArguments(**training_args_dict)
     
     # 4. Set up trainer with appropriate callbacks for metrics
     from src.utils.callbacks import get_callbacks_for_task
-    # Callbacks will handle metrics computation and logging during evaluation steps
     callbacks = get_callbacks_for_task(cfg.task, datamodule.tokenizer)
+    
+    # Get tokenizer for data collator (needed if default isn't used)
+    tokenizer = datamodule.tokenizer # Assuming tokenizer is loaded in datamodule
     
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=datamodule.train_dataset,
         eval_dataset=datamodule.val_dataset,
+        tokenizer=tokenizer, # Pass tokenizer for padding/data collation
         callbacks=callbacks,
-        # No compute_metrics needed - handled by callbacks
+        # compute_metrics=None, # Handled by callbacks
+        # data_collator=None # Use default data collator unless specific needed
     )
     
     # 5. Train model
@@ -90,23 +116,41 @@ def train(cfg: DictConfig):
     trainer.train()
     logger.info("Training finished.")
     
-    # 6. Save model
-    logger.info(f"Saving model to {training_args.output_dir}")
+    # 6. Save model (adapter only)
+    logger.info(f"Saving final adapter model to {training_args.output_dir}")
     trainer.save_model(training_args.output_dir)
     
-    # 7. Evaluate final model on test set if specified
+    # 7. Save merged model if requested
+    if cfg.get("save_merged", False):
+         logger.info("Merging and saving full model...")
+         merged_model_path = Path(training_args.output_dir) / "merged_model"
+         merged_model_path.mkdir(exist_ok=True)
+         try:
+             # Reload the trained adapter onto the model before merging
+             # This step might be redundant if trainer.model still holds the adapter
+             # but explicit reloading can be safer depending on Trainer state
+             # model.load_adapter(training_args.output_dir) # PEFT method if needed
+             model.merge_and_save(str(merged_model_path))
+             # Save tokenizer with merged model
+             tokenizer.save_pretrained(str(merged_model_path))
+         except Exception as e:
+             logger.error(f"Failed to merge and save model: {e}", exc_info=True)
+         else:
+             logger.info(f"Merged model saved to {merged_model_path}")
+
+    # 8. Evaluate final model on test set if specified
     if cfg.get("run_test_eval", False):
         logger.info("Running final evaluation on test set...")
-        eval_cfg = cfg.copy()
-        eval_cfg.eval_split = "test"
-        eval_cfg.model.params.path = training_args.output_dir # Use the saved model
-        # Assign model type if not present (needed by evaluate_model)
-        if "model_type" not in eval_cfg:
-            eval_cfg.model_type = cfg.task 
-            
-        from src.evaluate import evaluate_model
-        test_results = evaluate_model(eval_cfg)
-        logger.info(f"Final test results: {test_results}")
+        # Reuse the trainer to run evaluation on the test set
+        if hasattr(datamodule, "test_dataset") and datamodule.test_dataset:
+            logger.info("Evaluating on test set...")
+            test_results = trainer.evaluate(eval_dataset=datamodule.test_dataset)
+            logger.info(f"Final test results: {test_results}")
+            # Log test results separately
+            test_metrics_log = {f"test/{k.replace('eval_','')}": v for k, v in test_results.items()}
+            wandb.log(test_metrics_log)
+        else:
+            logger.warning("Test dataset not available or not loaded, skipping final test evaluation.")
     else:
         logger.info("Skipping final evaluation on test set.")
     

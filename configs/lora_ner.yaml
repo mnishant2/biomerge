@@ -14,19 +14,21 @@ model:
   _target_: src.models.lora_ner.build_lora_ner_model
   params:
     base_model: ${base_model}
-    load_in_8bit: true
-    lora_rank: 8 # Example
-    lora_alpha: 16 # Example
-    lora_dropout: 0.05 # Example
-    num_labels: 3
+    quantization: 'bf16' # Options: '4bit', 'bf16', 'fp16', null. 'bf16' recommended for A100.
+    lora_rank: 8
+    lora_alpha: 16
+    lora_dropout: 0.05
+    # num_labels: 3 # Not needed for generative
+    use_gradient_checkpointing: ${training.gradient_checkpointing} # Link to training setting
 
 training:
   output_dir: ${output_root}/ner/lora_ner
-  per_device_train_batch_size: 4
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 2 # Adjust based on quantization/memory (e.g., 2 for bf16, maybe 4-8 for 4bit)
+  gradient_accumulation_steps: 16 # Adjust to keep effective_batch_size constant
   num_train_epochs: 3
-  fp16: true
-  gradient_checkpointing: false # Explicitly disable gradient checkpointing
+  fp16: false # Trainer fp16/bf16 is handled by model dtype or compute_dtype in 4bit
+  bf16: ${eval:'${model.params.quantization}' == 'bf16'} # Enable bf16 training if model is loaded in bf16
+  gradient_checkpointing: false # Set to true to enable (requires more compute time)
   report_to: ["wandb"]
   logging_steps: 50
   eval_strategy: steps
@@ -35,10 +37,12 @@ training:
   save_steps: 500
   save_total_limit: 2
   load_best_model_at_end: true
-  metric_for_best_model: eval_loss
-  greater_is_better: false
+  metric_for_best_model: eval_ner_f1
+  greater_is_better: true
   remove_unused_columns: false
-  
+  dataloader_num_workers: 4 # Set based on CPU cores available (e.g., 4-16)
+  dataloader_pin_memory: true # Usually good for performance
+
 wandb_project: biomedical-entity-model-merging
 wandb_name: lora_ner_training
 
@@ -46,7 +50,7 @@ task: ner # Define task for callbacks
 run_test_eval: true # Evaluate on test set after training
 
 # Whether to merge and save adapter weights with base model after training
-save_merged: false 
+save_merged: false
 
 defaults:
   - _self_
