@@ -1,0 +1,71 @@
+program: src/train.py
+method: bayes
+metric:
+  goal: minimize
+  name: eval/loss
+parameters:
+  model._target_:
+    value: src.models.full_llama.FullLlamaModel
+  model.base_model:
+    value: meta-llama/Llama-3-8B
+  datamodule._target_:
+    value: src.datamodules.el_module.ELDataModule
+  datamodule.split:
+    value: train
+  datamodule.tokenizer_name:
+    value: meta-llama/Llama-3-8B
+  datamodule.path:
+    value: data/union/joint_decode_EL
+  
+  # Adapter fusion parameters
+  model.ner_adapter_path:
+    value: outputs/lora_ner
+  model.el_adapter_path:
+    value: outputs/lora_el
+  model.fusion_method:
+    values: ["linear", "task_arithmetic", "gating"]
+  model.alpha:
+    distribution: uniform
+    min: 0.1
+    max: 0.9
+  
+  # Training parameters
+  training.output_dir:
+    value: outputs/adapter_fusion
+  training.per_device_train_batch_size:
+    value: 4
+  training.gradient_accumulation_steps:
+    value: 8
+  training.num_train_epochs:
+    value: 1
+  training.fp16:
+    value: true
+  training.report_to:
+    value: ["wandb"]
+  training.logging_steps:
+    value: 50
+  training.evaluation_strategy:
+    value: steps
+  training.eval_steps:
+    value: 500
+  training.save_strategy:
+    value: steps
+  training.save_steps:
+    value: 500
+  training.save_total_limit:
+    value: 2
+  training.load_best_model_at_end:
+    value: true
+  training.metric_for_best_model:
+    value: eval_loss
+  training.greater_is_better:
+    value: false
+  training.learning_rate:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 5e-5
+  
+  wandb_project:
+    value: biomedical-entity-model-merging
+  wandb_name:
+    value: adapter_fusion_sweep 

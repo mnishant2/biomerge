@@ -1,0 +1,38 @@
+# Config for training HeadConcat model (LoRA backbone with two heads)
+datamodule:
+  _target_: src.datamodules.headconcat_module.HeadConcatDataModule
+  split: train
+  tokenizer_name: meta-llama/Llama-3-8B
+  path: data/union/head_concat
+
+model:
+  _target_: src.models.headconcat.HeadConcatModel
+  base_model: meta-llama/Llama-3-8B
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  ner_num_labels: 3
+  vocab_size: 32000
+
+training:
+  output_dir: outputs/headconcat
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 32
+  num_train_epochs: 5
+  fp16: true
+  report_to: ["wandb"]
+  logging_steps: 50
+  evaluation_strategy: steps
+  eval_steps: 500
+  save_strategy: steps
+  save_steps: 500
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  
+wandb_project: biomedical-entity-model-merging
+wandb_name: headconcat_training
+
+# Whether to save combined model
+save_merged: true 

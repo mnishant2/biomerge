@@ -1,0 +1,26 @@
+# Evaluation configuration
+evaluation_type: standard  # standard or merged
+
+# Model configuration
+model_path: ${output_root}/${task}/lora_${task}/best_checkpoint  # path to model checkpoint
+tokenizer_path: ${base_model}  # path to tokenizer
+is_peft_model: true  # whether the model is a PEFT adapter model
+
+# Task configuration
+task: ner  # ner, el, joint
+model_type: generative  # generative or token_classification
+
+# Data paths
+test_path: ${data_root}/${task}/test.jsonl
+
+# For merged model evaluation
+ner_test_path: ${data_root}/NER/test.jsonl
+el_test_path: ${data_root}/EL/test.jsonl
+
+# Output configuration
+output_dir: ${output_root}/eval/${task}
+
+# Wandb configuration
+log_to_wandb: true
+wandb_project: biomedical-entity-model-merging
+wandb_name: eval_${task} 

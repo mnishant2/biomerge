@@ -1,0 +1,8 @@
+# Config for Joint decoding datamodule
+_target_: src.datamodules.joint_decode_module.JointDecodeModule
+
+params:
+  tokenizer_name: aaditya/Llama3-OpenBioLLM-8B
+  path: ${data_root}/joint_decode_EL
+  max_length: 256  # Match sliding window size used in dataset creation
+  apply_sampling: true  # Enable balanced dataset sampling during training 

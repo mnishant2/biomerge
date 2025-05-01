@@ -1,0 +1,21 @@
+# Config for merging NER and EL adapters
+mode: merge
+base_model: aaditya/Llama3-OpenBioLLM-8B
+
+# Adapter paths
+ner_adapter_path: ${output_root}/ner/lora_ner/best_checkpoint  # Update with actual path
+el_adapter_path: ${output_root}/el/lora_el/best_checkpoint     # Update with actual path
+
+# Output path for merged model
+output_path: ${output_root}/merged_models/ner_el_merged_${merge_alpha}
+
+# Merge hyperparameters
+merge_alpha: 0.5  # Weight for NER adapter (1-alpha for EL adapter)
+
+# Evaluation paths for merged model
+ner_test_path: ${data_root}/NER/test.jsonl
+el_test_path: ${data_root}/EL/test.jsonl
+
+# Wandb configuration
+wandb_project: biomedical-entity-model-merging
+wandb_name: merged_model_alpha_${merge_alpha} 

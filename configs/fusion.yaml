@@ -1,0 +1,27 @@
+# Config for training adapter fusion
+mode: fusion
+base_model: aaditya/Llama3-OpenBioLLM-8B
+
+# Adapter paths
+ner_adapter_path: ${output_root}/ner/lora_ner/best_checkpoint  # Update with actual path
+el_adapter_path: ${output_root}/el/lora_el/best_checkpoint     # Update with actual path
+
+# Mixed dev data for fusion training - updated to use our newly created fusion dataset
+fusion_dev_data_path: ${data_root}/fusion/dev_mixed.jsonl
+
+# Output path for fusion model
+output_path: ${output_root}/fusion_models/ner_el_fusion
+
+# Fusion training hyperparameters
+fusion_epochs: 10  # Increased from 5 to 10 for better convergence
+fusion_learning_rate: 2e-3  # Slightly increased learning rate
+fusion_batch_size: 32  # Increased batch size for better stability
+freeze_base_model: true  # Explicitly freeze the base model
+
+# Test file paths - updated to match actual file naming convention
+ner_test_path: ${data_root}/NER/union_test_ner.jsonl
+el_test_path: ${data_root}/EL/union_test_el.jsonl
+
+# Wandb configuration
+wandb_project: biomedical-entity-model-merging
+wandb_name: adapter_fusion_balanced_5pct 

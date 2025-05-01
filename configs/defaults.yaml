@@ -1,0 +1,32 @@
+# Default configuration for all experiments
+mode: train  # train, eval, merge, fusion
+task: ner    # ner, el, jointdecode
+
+# Base model configuration
+base_model: aaditya/Llama3-OpenBioLLM-8B
+load_in_8bit: true
+
+# Paths
+data_root: data/union
+output_root: outputs
+
+# Wandb configuration
+wandb_project: biomedical-entity-model-merging
+wandb_name: ${task}_${model}_experiment
+run_test_eval: true  # whether to run evaluation on test set after training
+
+# Defaults list
+defaults:
+  - _self_
+  - model: lora_ner  # default model, will be overridden
+  - datamodule: ner  # default datamodule, will be overridden
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# Hydra configuration
+hydra:
+  run:
+    dir: ${output_root}/${task}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${task}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num} 

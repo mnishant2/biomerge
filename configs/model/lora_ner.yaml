@@ -1,0 +1,31 @@
+# Config for LoRA-NER experiment
+_target_: src.models.lora_ner.build_lora_ner_model
+
+params:
+  base_model: ${base_model}
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  load_in_8bit: ${load_in_8bit}
+  # num_labels: 3 # Removed - not used by the generative LoRANERModel
+  
+# Removed redundant training params - keep model params only
+# training:
+#   output_dir: ${output_root}/${task}/lora_${task}
+#   per_device_train_batch_size: 4
+#   per_device_eval_batch_size: 4
+#   gradient_accumulation_steps: 8
+#   num_train_epochs: 3
+#   learning_rate: 2e-4
+#   fp16: true
+#   report_to: ["wandb"]
+#   logging_steps: 50
+#   evaluation_strategy: steps
+#   eval_steps: 500
+#   save_strategy: steps
+#   save_steps: 500
+#   save_total_limit: 2
+#   load_best_model_at_end: true
+#   metric_for_best_model: eval_loss
+#   greater_is_better: false
+#   max_length: 256 

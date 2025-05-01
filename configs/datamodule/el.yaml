@@ -1,0 +1,8 @@
+# Entity Linking datamodule
+_target_: src.datamodules.el_module.ELDataModule
+
+params:
+  tokenizer_name: aaditya/Llama3-OpenBioLLM-8B
+  path: ${data_root}/EL
+  max_length: 256  # Match sliding window size used in dataset creation
+  apply_sampling: true  # Enable balanced dataset sampling during training 

@@ -1,0 +1,7 @@
+# Config for NER datamodule
+_target_: src.datamodules.ner_module.NERDataModule
+
+params:
+  tokenizer_name: ${base_model}
+  path: ${data_root}/NER
+  max_length: 256  # Match sliding window size used in dataset creation 
